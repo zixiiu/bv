@@ -16,7 +16,7 @@ fun countDownTimer(
     val logger = KotlinLogging.logger { }
     val timer = object : CountDownTimer(millisInFuture, countDownInterval) {
         override fun onTick(millisUntilFinished: Long) {
-            if (showLogs) logger.info { "[$tag] Count down tick: $millisUntilFinished" }
+            if (showLogs) logger.debug { "[$tag] Count down tick: $millisUntilFinished" }
             onTick?.invoke(millisUntilFinished)
         }
 

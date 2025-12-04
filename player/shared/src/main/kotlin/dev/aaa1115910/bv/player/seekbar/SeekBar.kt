@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.aaa1115910.bv.player.entity.SponsorBlockSegment
 import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.sin
@@ -43,6 +44,7 @@ fun WavySeekBar(
     waving: Boolean = true,
     showThumb: Boolean = true,
     colors: SliderColors = SliderDefaults.colors(),
+    sponsorSegments: List<SponsorBlockSegment> = emptyList(),
 ) {
     val trackWidth = 10f
 
@@ -176,6 +178,21 @@ fun WavySeekBar(
                     cap = StrokeCap.Round
                 )
             }
+
+            // Sponsor segments overlay
+            if (duration > 0) {
+                sponsorSegments.forEach { segment ->
+                    val startX = size.width * (segment.startTime * 1000 / duration.toFloat())
+                    val endX = size.width * (segment.endTime * 1000 / duration.toFloat())
+                    drawLine(
+                        color = segment.categoryEnum.color,
+                        start = Offset(startX, center.y),
+                        end = Offset(endX, center.y),
+                        strokeWidth = trackWidth,
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
         }
     }
 }
@@ -188,6 +205,7 @@ fun SeekBar(
     position: Long,
     bufferedPercentage: Int,
     colors: SliderColors = SliderDefaults.colors(),
+    sponsorSegments: List<SponsorBlockSegment> = emptyList(),
 ) {
     val trackWidth = 10f
     Canvas(
@@ -195,6 +213,7 @@ fun SeekBar(
             .fillMaxWidth()
             .height(trackWidth.dp)
     ) {
+        // Background track
         drawLine(
             color = colors.inactiveTrackColor,
             start = Offset(0f, center.y),
@@ -202,6 +221,7 @@ fun SeekBar(
             strokeWidth = trackWidth,
             cap = StrokeCap.Round
         )
+        // Buffered track
         drawLine(
             color = colors.disabledActiveTrackColor,
             start = Offset(0f, center.y),
@@ -209,6 +229,7 @@ fun SeekBar(
             strokeWidth = trackWidth,
             cap = StrokeCap.Round
         )
+        // Active track (played)
         drawLine(
             color = colors.activeTrackColor,
             start = Offset(0f, center.y),
@@ -216,6 +237,20 @@ fun SeekBar(
             strokeWidth = trackWidth,
             cap = StrokeCap.Round
         )
+        // Sponsor segments overlay
+        if (duration > 0) {
+            sponsorSegments.forEach { segment ->
+                val startX = size.width * (segment.startTime * 1000 / duration.toFloat())
+                val endX = size.width * (segment.endTime * 1000 / duration.toFloat())
+                drawLine(
+                    color = segment.categoryEnum.color,
+                    start = Offset(startX, center.y),
+                    end = Offset(endX, center.y),
+                    strokeWidth = trackWidth,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
     }
 }
 

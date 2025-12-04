@@ -2,6 +2,7 @@ plugins {
     alias(gradleLibs.plugins.android.library)
     alias(gradleLibs.plugins.compose.compiler)
     alias(gradleLibs.plugins.kotlin.android)
+    alias(gradleLibs.plugins.kotlin.serialization)
 }
 
 android {
@@ -76,6 +77,11 @@ dependencies {
     implementation(libs.logging)
     implementation(libs.lottie)
     implementation(libs.material)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.client.serialization.kotlinx)
+    implementation(libs.kotlinx.serialization)
     debugImplementation(androidx.compose.ui.test.manifest)
     debugImplementation(androidx.compose.ui.tooling)
 }

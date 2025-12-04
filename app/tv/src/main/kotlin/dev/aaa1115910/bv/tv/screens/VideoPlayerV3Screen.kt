@@ -76,6 +76,7 @@ fun VideoPlayerV3Screen(
             availableAudio = playerViewModel.availableAudio,
             availableSubtitleTracks = playerViewModel.availableSubtitle,
             availableVideoList = playerViewModel.availableVideoList,
+            currentVideoAid = playerViewModel.currentAid,
             currentVideoCid = playerViewModel.currentCid,
             currentResolution = playerViewModel.currentQuality,
             currentVideoCodec = playerViewModel.currentVideoCodec,

@@ -18,6 +18,9 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerHistoryData
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerStateData
+import dev.aaa1115910.bv.player.entity.SponsorBlockCategory
+import dev.aaa1115910.bv.player.entity.SponsorBlockSegment
+import dev.aaa1115910.bv.player.entity.SponsorBlockSkipMode
 import dev.aaa1115910.bv.util.formatHourMinSec
 
 // TODO 跳转历史记录
@@ -60,11 +63,48 @@ fun SkipEdTip(
     )
 }
 
+/**
+ * Sponsor Block segment skip tip
+ * @param category The segment category
+ * @param countdown Countdown seconds for auto-skip mode (null for manual mode)
+ */
+@Composable
+fun SponsorBlockSkipTip(
+    modifier: Modifier = Modifier,
+    show: Boolean,
+    category: SponsorBlockCategory,
+    countdown: Int? = null
+) {
+    val text = when (category.skipMode) {
+        SponsorBlockSkipMode.AUTO_SKIP -> {
+            if (countdown != null && countdown > 0) {
+                "跳过${category.displayName} [${countdown}秒后自动跳过] 按确认键取消"
+            } else {
+                "跳过${category.displayName}"
+            }
+        }
+        SponsorBlockSkipMode.MANUAL_SKIP -> {
+            "跳过${category.displayName} 按确认键跳过"
+        }
+        SponsorBlockSkipMode.DISABLED -> ""
+    }
+
+    if (category.skipMode != SponsorBlockSkipMode.DISABLED) {
+        SkipTip(
+            modifier = modifier,
+            show = show,
+            text = text,
+            backgroundColor = category.color.copy(alpha = 0.8f)
+        )
+    }
+}
+
 @Composable
 fun SkipTip(
     modifier: Modifier = Modifier,
     show: Boolean,
-    text: String
+    text: String,
+    backgroundColor: Color = Color.Black.copy(alpha = 0.6f)
 ) {
     AnimatedVisibility(
         visible = show,
@@ -79,7 +119,7 @@ fun SkipTip(
                     .align(Alignment.BottomStart)
                     .padding(bottom = 32.dp),
                 colors = SurfaceDefaults.colors(
-                    containerColor = Color.Black.copy(alpha = 0.6f)
+                    containerColor = backgroundColor
                 ),
                 shape = MaterialTheme.shapes.medium.copy(
                     topStart = CornerSize(0.dp), bottomStart = CornerSize(0.dp)
@@ -88,7 +128,8 @@ fun SkipTip(
                 Text(
                     modifier = Modifier.padding(8.dp),
                     text = text,
-                    style = MaterialTheme.typography.titleLarge
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White
                 )
             }
         }
@@ -100,6 +141,8 @@ fun SkipTips(
     modifier: Modifier = Modifier,
     showSkipOp: Boolean = false,
     showSkipEd: Boolean = false,
+    currentSponsorSegment: SponsorBlockSegment? = null,
+    sponsorSkipCountdown: Int = 0,
 ) {
     val videoPlayerHistoryData = LocalVideoPlayerHistoryData.current
     val videoPlayerStateData = LocalVideoPlayerStateData.current
@@ -112,5 +155,17 @@ fun SkipTips(
             show = videoPlayerStateData.showBackToHistory,
             time = videoPlayerHistoryData.lastPlayed.toLong().formatHourMinSec()
         )
+        
+        // SponsorBlock skip tip
+        if (currentSponsorSegment != null) {
+            SponsorBlockSkipTip(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 32.dp),
+                show = true,
+                category = currentSponsorSegment.categoryEnum,
+                countdown = if (sponsorSkipCountdown > 0) sponsorSkipCountdown else null
+            )
+        }
     }
 }

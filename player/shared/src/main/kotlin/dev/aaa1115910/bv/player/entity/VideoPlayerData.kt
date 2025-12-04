@@ -68,6 +68,7 @@ data class VideoPlayerConfigData(
     val availableAudio: List<Audio> = emptyList(),
     val availableSubtitleTracks: List<Subtitle> = emptyList(),
     val availableVideoList: List<VideoListItem> = emptyList(),
+    val currentVideoAid: Long = 0,
     val currentVideoCid: Long = 0,
     val currentResolution: Resolution = Resolution.R240P,
     val currentVideoCodec: VideoCodec = VideoCodec.AVC,

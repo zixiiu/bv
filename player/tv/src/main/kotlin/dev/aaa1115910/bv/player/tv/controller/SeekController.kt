@@ -24,10 +24,15 @@ import androidx.tv.material3.MaterialTheme
 import dev.aaa1115910.biliapi.entity.video.VideoShot
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerSeekData
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerSeekThumbData
+import dev.aaa1115910.bv.player.entity.LocalVideoPlayerSponsorBlockData
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerStateData
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerVideoShotData
+import dev.aaa1115910.bv.player.entity.SponsorBlockSegment
 import dev.aaa1115910.bv.player.seekbar.SeekMoveState
 import dev.aaa1115910.bv.player.tv.VideoSeekBar
+import io.github.oshai.kotlinlogging.KotlinLogging
+
+private val logger = KotlinLogging.logger("SeekController")
 
 @Composable
 fun SeekController(
@@ -40,6 +45,12 @@ fun SeekController(
     val videoPlayerSeekData = LocalVideoPlayerSeekData.current
     val videoPlayerSeekThumbData = LocalVideoPlayerSeekThumbData.current
     val videoPlayerStateData = LocalVideoPlayerStateData.current
+    val videoPlayerSponsorBlockData = LocalVideoPlayerSponsorBlockData.current
+
+    // Log segment data when SeekController becomes visible
+    if (show) {
+        logger.debug { "[SponsorBlock] SeekController visible, segments: ${videoPlayerSponsorBlockData.segments.size}" }
+    }
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -58,7 +69,8 @@ fun SeekController(
                 idleIcon = videoPlayerSeekThumbData.idleIcon,
                 movingIcon = videoPlayerSeekThumbData.movingIcon,
                 videoShot = videoPlayerVideoShotData.videoShot,
-                playing = videoPlayerStateData.isPlaying
+                playing = videoPlayerStateData.isPlaying,
+                sponsorSegments = videoPlayerSponsorBlockData.segments
             )
         }
     }
@@ -73,7 +85,8 @@ private fun SeekController(
     idleIcon: String,
     movingIcon: String,
     videoShot: VideoShot? = null,
-    playing: Boolean
+    playing: Boolean,
+    sponsorSegments: List<SponsorBlockSegment> = emptyList()
 ) {
     Column(
         modifier = modifier,
@@ -111,7 +124,8 @@ private fun SeekController(
                 idleIcon = idleIcon,
                 movingIcon = movingIcon,
                 showPosition = true,
-                playing = playing
+                playing = playing,
+                sponsorSegments = sponsorSegments
             )
         }
     }

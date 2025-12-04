@@ -39,8 +39,10 @@ import androidx.tv.material3.Text
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerClockData
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerSeekData
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerSeekThumbData
+import dev.aaa1115910.bv.player.entity.LocalVideoPlayerSponsorBlockData
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerStateData
 import dev.aaa1115910.bv.player.entity.LocalVideoPlayerVideoInfoData
+import dev.aaa1115910.bv.player.entity.SponsorBlockSegment
 import dev.aaa1115910.bv.player.entity.VideoPlayerClockData
 import dev.aaa1115910.bv.player.entity.VideoPlayerSeekData
 import dev.aaa1115910.bv.player.entity.VideoPlayerSeekThumbData
@@ -61,6 +63,7 @@ fun ControllerVideoInfo(
     val videoPlayerSeekThumbData = LocalVideoPlayerSeekThumbData.current
     val videoPlayerVideoInfoData = LocalVideoPlayerVideoInfoData.current
     val videoPlayerStateData = LocalVideoPlayerStateData.current
+    val videoPlayerSponsorBlockData = LocalVideoPlayerSponsorBlockData.current
 
     var seekHideTimer: CountDownTimer? by remember { mutableStateOf(null) }
     val setCloseInfoTimer: () -> Unit = {
@@ -113,7 +116,8 @@ fun ControllerVideoInfo(
                 stateData = videoPlayerStateData,
                 partTitle = videoPlayerVideoInfoData.partTitle,
                 idleIcon = videoPlayerSeekThumbData.idleIcon,
-                movingIcon = videoPlayerSeekThumbData.movingIcon
+                movingIcon = videoPlayerSeekThumbData.movingIcon,
+                sponsorSegments = videoPlayerSponsorBlockData.segments
             )
         }
     }
@@ -163,7 +167,8 @@ fun ControllerVideoInfoBottom(
     seekData: VideoPlayerSeekData,
     stateData: VideoPlayerStateData,
     idleIcon: String,
-    movingIcon: String
+    movingIcon: String,
+    sponsorSegments: List<SponsorBlockSegment> = emptyList()
 ) {
     var waving by remember { mutableStateOf(false) }
 
@@ -215,7 +220,8 @@ fun ControllerVideoInfoBottom(
             moveState = SeekMoveState.Idle,
             idleIcon = idleIcon,
             movingIcon = movingIcon,
-            playing = waving
+            playing = waving,
+            sponsorSegments = sponsorSegments
         )
     }
 }

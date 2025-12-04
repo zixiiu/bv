@@ -14,6 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,13 @@ import dev.aaa1115910.bv.player.entity.Resolution
 import dev.aaa1115910.bv.player.entity.VideoAspectRatio
 import dev.aaa1115910.bv.player.entity.VideoCodec
 import dev.aaa1115910.bv.player.entity.VideoListItem
+import dev.aaa1115910.bv.player.entity.LocalVideoPlayerSponsorBlockData
+import dev.aaa1115910.bv.player.entity.SponsorBlockCategory
+import dev.aaa1115910.bv.player.entity.SponsorBlockSegment
+import dev.aaa1115910.bv.player.entity.SponsorBlockSkipMode
+import dev.aaa1115910.bv.player.entity.VideoPlayerSponsorBlockData
+import dev.aaa1115910.bv.player.api.SponsorBlockApi
+import dev.aaa1115910.biliapi.util.toBv
 import dev.aaa1115910.bv.player.entity.VideoPlayerClockData
 import dev.aaa1115910.bv.player.entity.VideoPlayerDebugInfoData
 import dev.aaa1115910.bv.player.entity.VideoPlayerSeekData
@@ -151,6 +159,14 @@ fun BvPlayer(
     var hideBackToHistoryTimer: CountDownTimer? by remember { mutableStateOf(null) }
 
     var currentDanmakuMaskFrame: DanmakuMaskFrame? by remember { mutableStateOf(null) }
+    var sponsorSegments by remember { mutableStateOf<List<SponsorBlockSegment>>(emptyList()) }
+
+    // SponsorBlock auto-skip state
+    var currentSponsorSegment by remember { mutableStateOf<SponsorBlockSegment?>(null) }
+    var sponsorSkipCountdown by remember { mutableIntStateOf(0) }
+    var sponsorSkipCancelled by remember { mutableStateOf(false) }
+    var sponsorSkipTimer: CountDownTimer? by remember { mutableStateOf(null) }
+    var lastProcessedSegmentUUID by remember { mutableStateOf<String?>(null) }
 
     val updateSeek = {
         currentPosition = videoPlayer.currentPosition.coerceAtLeast(0L)
@@ -246,6 +262,145 @@ fun BvPlayer(
             videoPlayerVideoInfoData.width / videoPlayerVideoInfoData.height.toFloat()
         defaultAspectRatio = newAspectRatio.takeIf { it > 0 } ?: (16 / 9f)
         updateVideoAspectRatio()
+    }
+
+    // Fetch sponsor segments when video changes
+    LaunchedEffect(videoPlayerConfigData.currentVideoAid, videoPlayerConfigData.currentVideoCid) {
+        val aid = videoPlayerConfigData.currentVideoAid
+        val cid = videoPlayerConfigData.currentVideoCid
+        logger.info { "[SponsorBlock] LaunchedEffect triggered - aid: $aid, cid: $cid" }
+        if (aid > 0) {
+            sponsorSegments = emptyList() // Clear old segments
+            scope.launch(Dispatchers.IO) {
+                val bvid = aid.toBv()
+                logger.info { "[SponsorBlock] Fetching segments for bvid: $bvid, cid: $cid" }
+                val segments = SponsorBlockApi.getSkipSegments(
+                    videoId = bvid,
+                    cid = cid.takeIf { it > 0 }?.toString()
+                )
+                logger.info { "[SponsorBlock] API returned ${segments.size} segments" }
+                segments.forEachIndexed { index, segment ->
+                    logger.info { "[SponsorBlock] Segment $index: ${segment.category} [${segment.startTime}s - ${segment.endTime}s]" }
+                }
+                withContext(Dispatchers.Main) {
+                    sponsorSegments = segments
+                    logger.info { "[SponsorBlock] Updated sponsorSegments state with ${segments.size} items" }
+                }
+            }
+        } else {
+            logger.warn { "[SponsorBlock] aid is 0 or negative, skipping segment fetch" }
+        }
+    }
+
+    // SponsorBlock segment detection and auto-skip
+    // AUTO_SKIP: countdown starts 3 seconds BEFORE segment, skips at segment start
+    // MANUAL_SKIP: shows tip when entering segment
+    LaunchedEffect(currentPosition, sponsorSegments, isPlaying) {
+        if (!isPlaying || sponsorSegments.isEmpty()) {
+            // Clear state when not playing
+            if (!isPlaying && currentSponsorSegment != null) {
+                sponsorSkipTimer?.cancel()
+                currentSponsorSegment = null
+                sponsorSkipCountdown = 0
+            }
+            return@LaunchedEffect
+        }
+
+        val pos = currentPosition
+        val lookAheadMs = 3000L // Look ahead 3 seconds for AUTO_SKIP
+
+        // For AUTO_SKIP: detect segments that will start within 3 seconds
+        val upcomingAutoSkipSegment = sponsorSegments.find { segment ->
+            segment.categoryEnum.skipMode == SponsorBlockSkipMode.AUTO_SKIP &&
+                pos >= (segment.startTimeMs - lookAheadMs) && 
+                pos < segment.startTimeMs &&
+                lastProcessedSegmentUUID != segment.UUID
+        }
+
+        // For MANUAL_SKIP: detect segments we're currently in
+        val currentManualSkipSegment = sponsorSegments.find { segment ->
+            segment.categoryEnum.skipMode == SponsorBlockSkipMode.MANUAL_SKIP &&
+                pos >= segment.startTimeMs && 
+                pos < segment.endTimeMs &&
+                lastProcessedSegmentUUID != segment.UUID
+        }
+
+        // Also check if we're inside an AUTO_SKIP segment (for immediate skip if just entered)
+        val currentAutoSkipSegment = sponsorSegments.find { segment ->
+            segment.categoryEnum.skipMode == SponsorBlockSkipMode.AUTO_SKIP &&
+                pos >= segment.startTimeMs && 
+                pos < segment.endTimeMs &&
+                lastProcessedSegmentUUID != segment.UUID
+        }
+
+        when {
+            // Case 1: Approaching an AUTO_SKIP segment - start countdown
+            upcomingAutoSkipSegment != null && currentSponsorSegment?.UUID != upcomingAutoSkipSegment.UUID -> {
+                logger.info { "[SponsorBlock] Approaching AUTO_SKIP segment: ${upcomingAutoSkipSegment.category} in ${(upcomingAutoSkipSegment.startTimeMs - pos) / 1000}s" }
+                
+                sponsorSkipTimer?.cancel()
+                currentSponsorSegment = upcomingAutoSkipSegment
+                sponsorSkipCancelled = false
+                
+                val timeUntilSegment = upcomingAutoSkipSegment.startTimeMs - pos
+                val countdownSeconds = ((timeUntilSegment + 999) / 1000).toInt().coerceIn(1, 3)
+                sponsorSkipCountdown = countdownSeconds
+                
+                sponsorSkipTimer = countDownTimer(
+                    millisInFuture = timeUntilSegment,
+                    countDownInterval = 1000,
+                    tag = "sponsorSkipTimer",
+                    onTick = { remaining ->
+                        sponsorSkipCountdown = ((remaining + 999) / 1000).toInt().coerceAtLeast(1)
+                    }
+                ) {
+                    // Countdown finished (reached segment start), perform skip if not cancelled
+                    if (!sponsorSkipCancelled && currentSponsorSegment != null) {
+                        logger.info { "[SponsorBlock] Auto-skipping segment ${currentSponsorSegment!!.category} to ${currentSponsorSegment!!.endTime}s" }
+                        lastProcessedSegmentUUID = currentSponsorSegment!!.UUID
+                        val skipToTime = currentSponsorSegment!!.endTimeMs
+                        currentSponsorSegment = null
+                        sponsorSkipCountdown = 0
+                        videoPlayer.seekTo(skipToTime)
+                    }
+                }
+            }
+
+            // Case 2: Just entered an AUTO_SKIP segment without countdown (e.g., seeked into it) - skip immediately
+            currentAutoSkipSegment != null && currentSponsorSegment?.UUID != currentAutoSkipSegment.UUID 
+                && upcomingAutoSkipSegment == null -> {
+                logger.info { "[SponsorBlock] Entered AUTO_SKIP segment directly: ${currentAutoSkipSegment.category}, skipping immediately" }
+                lastProcessedSegmentUUID = currentAutoSkipSegment.UUID
+                videoPlayer.seekTo(currentAutoSkipSegment.endTimeMs)
+            }
+
+            // Case 3: Entered a MANUAL_SKIP segment - show tip
+            currentManualSkipSegment != null && currentSponsorSegment?.UUID != currentManualSkipSegment.UUID -> {
+                logger.info { "[SponsorBlock] Entered MANUAL_SKIP segment: ${currentManualSkipSegment.category}" }
+                currentSponsorSegment = currentManualSkipSegment
+                sponsorSkipCancelled = false
+                sponsorSkipCountdown = 0
+            }
+
+            // Case 4: Left all segments - clear state
+            upcomingAutoSkipSegment == null && currentManualSkipSegment == null && currentAutoSkipSegment == null -> {
+                if (currentSponsorSegment != null && !sponsorSkipCancelled) {
+                    // Only clear if we naturally left the segment (not cancelled)
+                    val wasManualSkip = currentSponsorSegment?.categoryEnum?.skipMode == SponsorBlockSkipMode.MANUAL_SKIP
+                    if (wasManualSkip || pos >= (currentSponsorSegment?.endTimeMs ?: 0)) {
+                        logger.info { "[SponsorBlock] Left segment" }
+                        sponsorSkipTimer?.cancel()
+                        currentSponsorSegment = null
+                        sponsorSkipCountdown = 0
+                    }
+                }
+            }
+        }
+    }
+
+    // Reset processed segment when video changes
+    LaunchedEffect(videoPlayerConfigData.currentVideoAid, videoPlayerConfigData.currentVideoCid) {
+        lastProcessedSegmentUUID = null
     }
 
     val updateBackToHistory: () -> Unit = {
@@ -501,6 +656,9 @@ fun BvPlayer(
         LocalVideoPlayerDebugInfoData provides VideoPlayerDebugInfoData(
             debugInfo = videoPlayer.debugInfo
         ),
+        LocalVideoPlayerSponsorBlockData provides VideoPlayerSponsorBlockData(
+            segments = sponsorSegments
+        ),
     ) {
         VideoPlayerController(
             modifier = modifier
@@ -633,6 +791,31 @@ fun BvPlayer(
             onPlayModeChange = { playMode ->
                 logger.info { "On play mode change: $playMode" }
                 onPlayModeChange(playMode)
+            },
+            // SponsorBlock
+            currentSponsorSegment = currentSponsorSegment,
+            sponsorSkipCountdown = sponsorSkipCountdown,
+            onSponsorBlockSkip = {
+                currentSponsorSegment?.let { segment ->
+                    logger.fInfo { "[SponsorBlock] Manual skip to ${segment.endTime}s" }
+                    sponsorSkipTimer?.cancel()
+                    lastProcessedSegmentUUID = segment.UUID
+                    val skipToTime = segment.endTimeMs
+                    currentSponsorSegment = null
+                    sponsorSkipCountdown = 0
+                    videoPlayer.seekTo(skipToTime)
+                    mDanmakuPlayer?.seekTo(skipToTime)
+                }
+            },
+            onSponsorBlockCancelSkip = {
+                logger.fInfo { "[SponsorBlock] Cancelled auto-skip" }
+                sponsorSkipTimer?.cancel()
+                sponsorSkipCancelled = true
+                currentSponsorSegment?.let { segment ->
+                    lastProcessedSegmentUUID = segment.UUID
+                }
+                currentSponsorSegment = null
+                sponsorSkipCountdown = 0
             },
             onRequestFocus = { focusRequester.requestFocus() },
         ) {

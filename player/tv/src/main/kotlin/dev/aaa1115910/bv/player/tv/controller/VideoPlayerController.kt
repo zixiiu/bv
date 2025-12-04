@@ -46,6 +46,8 @@ import dev.aaa1115910.bv.player.entity.VideoListItem
 import dev.aaa1115910.bv.player.seekbar.SeekMoveState
 import dev.aaa1115910.bv.player.shared.BuildConfig
 import dev.aaa1115910.bv.player.shared.R
+import dev.aaa1115910.bv.player.entity.SponsorBlockSegment
+import dev.aaa1115910.bv.player.entity.SponsorBlockSkipMode
 import dev.aaa1115910.bv.util.countDownTimer
 import dev.aaa1115910.bv.util.fInfo
 import dev.aaa1115910.bv.util.toast
@@ -80,6 +82,12 @@ fun VideoPlayerController(
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
     onSubtitleBottomPadding: (Dp) -> Unit,
     onPlayModeChange: (PlayMode) -> Unit,
+
+    // SponsorBlock
+    currentSponsorSegment: SponsorBlockSegment? = null,
+    sponsorSkipCountdown: Int = 0,
+    onSponsorBlockSkip: () -> Unit = {},
+    onSponsorBlockCancelSkip: () -> Unit = {},
 
     onRequestFocus: () -> Unit,
     content: @Composable BoxScope.() -> Unit
@@ -192,6 +200,26 @@ fun VideoPlayerController(
                         if (!showClickableControllers && videoPlayerStateData.showBackToHistory) {
                             if (it.type == KeyEventType.KeyDown) return@onPreviewKeyEvent true
                             onBackToHistory()
+                            return@onPreviewKeyEvent true
+                        }
+
+                        // SponsorBlock skip handling
+                        if (!showClickableControllers && currentSponsorSegment != null) {
+                            if (it.type == KeyEventType.KeyDown) return@onPreviewKeyEvent true
+                            val segment = currentSponsorSegment
+                            when (segment?.categoryEnum?.skipMode) {
+                                SponsorBlockSkipMode.AUTO_SKIP -> {
+                                    // Cancel auto-skip
+                                    logger.fInfo { "[SponsorBlock] User cancelled auto-skip" }
+                                    onSponsorBlockCancelSkip()
+                                }
+                                SponsorBlockSkipMode.MANUAL_SKIP -> {
+                                    // Perform manual skip
+                                    logger.fInfo { "[SponsorBlock] User triggered manual skip" }
+                                    onSponsorBlockSkip()
+                                }
+                                else -> {}
+                            }
                             return@onPreviewKeyEvent true
                         }
 
@@ -329,7 +357,10 @@ fun VideoPlayerController(
             }
         }
         BottomSubtitle()
-        SkipTips()
+        SkipTips(
+            currentSponsorSegment = currentSponsorSegment,
+            sponsorSkipCountdown = sponsorSkipCountdown
+        )
         PlayStateTips()
         SeekController(
             show = showSeekController,
