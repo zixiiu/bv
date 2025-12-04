@@ -178,7 +178,7 @@ private fun BottomMenuContent(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight(0.33f)
-            .background(Color.Black.copy(alpha = 0.6f))
+            .background(Color.Black.copy(alpha = 0.9f))
             .focusRequester(focusRequester)
             .onFocusChanged { hasFocus = it.hasFocus }
             .focusable()

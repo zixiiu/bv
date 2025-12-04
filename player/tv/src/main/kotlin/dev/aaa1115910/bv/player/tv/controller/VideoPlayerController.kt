@@ -161,6 +161,17 @@ fun VideoPlayerController(
                     return@onPreviewKeyEvent false
                 }
 
+                if (showVideoInfo && !showBottomMenu) {
+                    if (it.key == Key.Back) {
+                        if (it.type == KeyEventType.KeyUp) {
+                            logger.fInfo { "[${it.key}] hide video info" }
+                            showVideoInfo = false
+                        }
+                        onRequestFocus()
+                        return@onPreviewKeyEvent true
+                    }
+                }
+
                 if (showSeekController) {
                     if (listOf(
                             Key.Back,

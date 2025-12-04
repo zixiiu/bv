@@ -132,7 +132,7 @@ fun ControllerVideoInfoTop(
                 MaterialTheme.shapes.large
                     .copy(topStart = CornerSize(0.dp), topEnd = CornerSize(0.dp))
             )
-            .background(Color.Black.copy(0.5f))
+            .background(Color.Black.copy(0.8f))
             .padding(horizontal = 32.dp, vertical = 16.dp),
     ) {
         Box {
@@ -175,7 +175,7 @@ fun ControllerVideoInfoBottom(
                 MaterialTheme.shapes.large
                     .copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
             )
-            .background(Color.Black.copy(0.5f))
+            .background(Color.Black.copy(0.8f))
             .padding(bottom = 12.dp),
         verticalArrangement = Arrangement.Bottom
     ) {

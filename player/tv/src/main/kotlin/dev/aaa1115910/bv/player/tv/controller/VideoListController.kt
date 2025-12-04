@@ -78,7 +78,7 @@ fun VideoListController(
             Surface(
                 modifier = modifier,
                 colors = SurfaceDefaults.colors(
-                    containerColor = Color.Black.copy(alpha = 0.5f)
+                    containerColor = Color.Black.copy(alpha = 0.8f)
                 )
             ) {
                 Box(
