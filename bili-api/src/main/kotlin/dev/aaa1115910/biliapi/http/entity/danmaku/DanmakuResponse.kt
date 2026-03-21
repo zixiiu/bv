@@ -11,6 +11,12 @@ data class DanmakuResponse(
     val data: List<DanmakuData> = emptyList()
 )
 
+data class DanmakuSegmentMetadata(
+    val segmentTotal: Int,
+    val count: Int,
+    val state: Int
+)
+
 data class DanmakuData(
     val time: Float,
     val type: Int,

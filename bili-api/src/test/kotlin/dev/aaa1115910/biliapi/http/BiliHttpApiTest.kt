@@ -9,6 +9,7 @@ import dev.aaa1115910.biliapi.http.util.generateBuvid
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Paths
@@ -122,6 +123,7 @@ internal class BiliHttpApiTest {
         assertDoesNotThrow {
             runBlocking {
                 val response = BiliHttpApi.getDanmakuXml(cid = 903675075)
+                assertTrue(response.data.isNotEmpty())
                 println(response)
             }
         }

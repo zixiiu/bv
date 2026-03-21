@@ -1,5 +1,7 @@
 package dev.aaa1115910.biliapi.http
 
+import bilibili.community.service.dm.v1.DmSegMobileReply
+import bilibili.community.service.dm.v1.DmWebViewReply
 import com.tfowl.ktor.client.plugins.JsoupPlugin
 import dev.aaa1115910.biliapi.entity.pgc.PgcType
 import dev.aaa1115910.biliapi.http.BiliHttpApi.getRegionDynamic
@@ -7,6 +9,7 @@ import dev.aaa1115910.biliapi.http.entity.BiliResponse
 import dev.aaa1115910.biliapi.http.entity.BiliResponseWithoutData
 import dev.aaa1115910.biliapi.http.entity.danmaku.DanmakuData
 import dev.aaa1115910.biliapi.http.entity.danmaku.DanmakuResponse
+import dev.aaa1115910.biliapi.http.entity.danmaku.DanmakuSegmentMetadata
 import dev.aaa1115910.biliapi.http.entity.dynamic.DynamicData
 import dev.aaa1115910.biliapi.http.entity.dynamic.DynamicDetailData
 import dev.aaa1115910.biliapi.http.entity.history.HistoryData
@@ -298,13 +301,102 @@ object BiliHttpApi {
      */
     suspend fun getDanmakuXml(
         cid: Long,
+        sessData: String = "",
+        buvid3: String = ""
+    ): DanmakuResponse {
+        val errors = mutableListOf<String>()
+
+        runCatching {
+            return getDanmakuBySegmentApi(cid, sessData, buvid3)
+        }.onFailure {
+            errors += "segment=${it.message}"
+        }
+
+        runCatching {
+            return getDirectDanmakuXml(cid)
+        }.onFailure {
+            errors += "direct=${it.message}"
+        }
+
+        runCatching {
+            return getLegacyDanmakuXml(cid, sessData)
+        }.onFailure {
+            errors += "legacy=${it.message}"
+        }
+
+        throw IllegalStateException("All danmaku http loaders failed: ${errors.joinToString("; ")}")
+    }
+
+    suspend fun getDanmakuSegmentMetadata(
+        cid: Long,
+        sessData: String = "",
+        buvid3: String = ""
+    ): DanmakuSegmentMetadata {
+        val dmWebViewReply = DmWebViewReply.parseFrom(
+            client.get("/x/v2/dm/web/view") {
+                parameter("type", 1)
+                parameter("oid", cid)
+                header("referer", "https://www.bilibili.com")
+                generateDanmakuCookies(sessData, buvid3)?.let { header("Cookie", it) }
+            }.readRawBytes()
+        )
+
+        return DanmakuSegmentMetadata(
+            segmentTotal = dmWebViewReply.dmSge.total.toInt(),
+            count = dmWebViewReply.count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            state = dmWebViewReply.state
+        )
+    }
+
+    private suspend fun getDanmakuBySegmentApi(
+        cid: Long,
+        sessData: String = "",
+        buvid3: String = ""
+    ): DanmakuResponse {
+        val metadata = getDanmakuSegmentMetadata(cid, sessData, buvid3)
+        val data = buildList {
+            for (segmentIndex in 1..metadata.segmentTotal) {
+                val segmentReply = DmSegMobileReply.parseFrom(
+                    client.get("/x/v2/dm/web/seg.so") {
+                        parameter("type", 1)
+                        parameter("oid", cid)
+                        parameter("segment_index", segmentIndex)
+                        header("referer", "https://www.bilibili.com")
+                        generateDanmakuCookies(sessData, buvid3)?.let { header("Cookie", it) }
+                    }.readRawBytes()
+                )
+                addAll(segmentReply.elemsList.map { it.toDanmakuData() })
+            }
+        }.sortedBy { it.time }
+
+        return DanmakuResponse(
+            chatserver = "chat.bilibili.com",
+            chatId = cid,
+            maxLimit = metadata.count,
+            state = metadata.state,
+            realName = 0,
+            source = "web-segment",
+            data = data
+        )
+    }
+
+    private suspend fun getDirectDanmakuXml(cid: Long): DanmakuResponse {
+        val xmlChannel = client.get("https://comment.bilibili.com/$cid.xml").bodyAsChannel()
+        return parseDanmakuXml(xmlChannel)
+    }
+
+    private suspend fun getLegacyDanmakuXml(
+        cid: Long,
         sessData: String = ""
     ): DanmakuResponse {
         val xmlChannel = client.get("/x/v1/dm/list.so") {
             parameter("oid", cid)
             header("Cookie", "SESSDATA=$sessData;")
         }.bodyAsChannel()
+        return parseDanmakuXml(xmlChannel)
+    }
 
+    private suspend fun parseDanmakuXml(xmlChannel: io.ktor.utils.io.ByteReadChannel): DanmakuResponse {
         val dbFactory = DocumentBuilderFactory.newInstance()
         val dBuilder = dbFactory.newDocumentBuilder()
         val doc = withContext(Dispatchers.IO) {
@@ -333,6 +425,30 @@ object BiliHttpApi {
 
         return DanmakuResponse(chatServer, chatId, maxLimit, state, realName, source, data)
     }
+
+    private fun generateDanmakuCookies(
+        sessData: String,
+        buvid3: String
+    ): String? {
+        val cookies = buildList {
+            if (sessData.isNotBlank()) add("SESSDATA=$sessData")
+            if (buvid3.isNotBlank()) add("buvid3=$buvid3")
+        }
+        return cookies.takeIf { it.isNotEmpty() }?.joinToString("; ", postfix = ";")
+    }
+
+    private fun bilibili.community.service.dm.v1.DanmakuElem.toDanmakuData() = DanmakuData(
+        time = progress / 1000f,
+        type = mode,
+        size = fontsize,
+        color = color.toInt(),
+        timestamp = ctime.toInt(),
+        pool = pool,
+        midHash = midHash,
+        dmid = id,
+        level = weight,
+        text = content
+    )
 
     /**
      * 获取动态列表

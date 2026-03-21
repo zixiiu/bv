@@ -7,6 +7,7 @@ import dev.aaa1115910.biliapi.entity.video.HeartbeatVideoType
 import dev.aaa1115910.biliapi.grpc.utils.getDetail
 import dev.aaa1115910.biliapi.http.BiliHttpProxyApi
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.net.URL
@@ -43,8 +44,12 @@ class VideoPlayRepositoryTest {
 
     init {
         channelRepository.initDefaultChannel(ACCESS_TOKEN, BUVID)
-        channelRepository.initProxyChannel(ACCESS_TOKEN, BUVID, GRPC_PROXY_SERVER)
-        BiliHttpProxyApi.createClient(HTTP_PROXY_SERVER)
+        if (GRPC_PROXY_SERVER.isNotBlank()) {
+            channelRepository.initProxyChannel(ACCESS_TOKEN, BUVID, GRPC_PROXY_SERVER)
+        }
+        if (HTTP_PROXY_SERVER.isNotBlank()) {
+            BiliHttpProxyApi.createClient(HTTP_PROXY_SERVER)
+        }
         authRepository.sessionData = SESSDATA
         authRepository.accessToken = ACCESS_TOKEN
         authRepository.biliJct = BILI_JCT
@@ -233,6 +238,28 @@ class VideoPlayRepositoryTest {
     }
 
     @Test
+    fun `get danmaku with web api`() = runBlocking {
+        val result = videoPlayRepository.getDanmaku(
+            aid = 648092492,
+            cid = 903675075,
+            preferApiType = ApiType.Web
+        )
+        assertTrue(result.isNotEmpty())
+        println("danmaku size=${result.size}")
+    }
+
+    @Test
+    fun `get danmaku with app api`() = runBlocking {
+        val result = videoPlayRepository.getDanmaku(
+            aid = 648092492,
+            cid = 903675075,
+            preferApiType = ApiType.App
+        )
+        assertTrue(result.isNotEmpty())
+        println("danmaku size=${result.size}")
+    }
+
+    @Test
     fun `send heartbeat with web api`() = runBlocking {
         val randomTime = (0..100).random()
         println("random time: $randomTime")
@@ -339,4 +366,3 @@ class VideoPlayRepositoryTest {
         }
     }
 }
-

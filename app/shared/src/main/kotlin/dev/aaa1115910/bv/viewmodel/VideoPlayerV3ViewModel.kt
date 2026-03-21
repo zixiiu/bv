@@ -24,7 +24,6 @@ import dev.aaa1115910.biliapi.entity.video.SubtitleAiStatus
 import dev.aaa1115910.biliapi.entity.video.SubtitleAiType
 import dev.aaa1115910.biliapi.entity.video.SubtitleType
 import dev.aaa1115910.biliapi.entity.video.VideoShot
-import dev.aaa1115910.biliapi.http.BiliHttpApi
 import dev.aaa1115910.biliapi.repositories.VideoPlayRepository
 import dev.aaa1115910.bilisubtitle.SubtitleParser
 import dev.aaa1115910.bilisubtitle.entity.SubtitleItem
@@ -168,7 +167,7 @@ class VideoPlayerV3ViewModel(
             updateSubtitle()
             loadPlayUrl(avid, cid, epid ?: 0, preferApi = Prefs.apiType, proxyArea = proxyArea)
             addLogs("加载弹幕中")
-            loadDanmaku(cid)
+            loadDanmaku(avid, cid)
             updateDanmakuMask()
 
             updateVideoShot()
@@ -410,11 +409,15 @@ class VideoPlayerV3ViewModel(
         }
     }
 
-    suspend fun loadDanmaku(cid: Long) {
+    suspend fun loadDanmaku(aid: Long, cid: Long) {
         runCatching {
-            val danmakuXmlData = BiliHttpApi.getDanmakuXml(cid = cid, sessData = Prefs.sessData)
+            val danmakuDataList = videoPlayRepository.getDanmaku(
+                aid = aid,
+                cid = cid,
+                preferApiType = Prefs.apiType
+            )
 
-            val danmakuItemDataList = danmakuXmlData.data.map {
+            val danmakuItemDataList = danmakuDataList.map {
                 DanmakuItemData(
                     danmakuId = it.dmid,
                     position = (it.time * 1000).toLong(),

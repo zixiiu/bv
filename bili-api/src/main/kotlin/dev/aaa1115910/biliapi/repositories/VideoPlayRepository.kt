@@ -3,6 +3,7 @@ package dev.aaa1115910.biliapi.repositories
 import bilibili.app.playerunite.v1.PlayerGrpcKt
 import bilibili.app.playerunite.v1.playViewUniteReq
 import bilibili.community.service.dm.v1.DMGrpcKt
+import bilibili.community.service.dm.v1.dmSegMobileReq
 import bilibili.community.service.dm.v1.dmViewReq
 import bilibili.pgc.gateway.player.v2.playViewReq
 import bilibili.playershared.videoVod
@@ -18,6 +19,7 @@ import dev.aaa1115910.biliapi.entity.video.VideoShot
 import dev.aaa1115910.biliapi.grpc.utils.handleGrpcException
 import dev.aaa1115910.biliapi.http.BiliHttpApi
 import dev.aaa1115910.biliapi.http.BiliHttpProxyApi
+import dev.aaa1115910.biliapi.http.entity.danmaku.DanmakuData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -235,6 +237,75 @@ class VideoPlayRepository(
         }
     }
 
+    suspend fun getDanmaku(
+        aid: Long,
+        cid: Long,
+        preferApiType: ApiType = ApiType.Web
+    ): List<DanmakuData> {
+        val loaders = when (preferApiType) {
+            ApiType.Web -> listOf<Pair<String, suspend () -> List<DanmakuData>>>(
+                "web" to { getDanmakuByWeb(cid) },
+                "app" to { getDanmakuByApp(aid, cid) }
+            )
+
+            ApiType.App -> listOf<Pair<String, suspend () -> List<DanmakuData>>>(
+                "app" to { getDanmakuByApp(aid, cid) },
+                "web" to { getDanmakuByWeb(cid) }
+            )
+        }
+
+        var lastError: Throwable? = null
+        val errors = mutableListOf<String>()
+        loaders.forEach { (source, load) ->
+            runCatching {
+                return load().also {
+                    println("load danmaku success: [source=$source, aid=$aid, cid=$cid, size=${it.size}]")
+                }
+            }.onFailure {
+                lastError = it
+                errors += "$source=${it.message}"
+            }
+        }
+        throw IllegalStateException(
+            "All danmaku loaders failed: ${errors.joinToString("; ")}",
+            lastError
+        )
+    }
+
+    private suspend fun getDanmakuByWeb(cid: Long): List<DanmakuData> {
+        return BiliHttpApi.getDanmakuXml(
+            cid = cid,
+            sessData = authRepository.sessionData ?: "",
+            buvid3 = authRepository.buvid3 ?: ""
+        ).data
+    }
+
+    private suspend fun getDanmakuByApp(aid: Long, cid: Long): List<DanmakuData> {
+        val segmentTotal = BiliHttpApi.getDanmakuSegmentMetadata(
+            cid = cid,
+            sessData = authRepository.sessionData ?: "",
+            buvid3 = authRepository.buvid3 ?: ""
+        ).segmentTotal
+        if (segmentTotal <= 0) return emptyList()
+
+        return buildList {
+            for (segmentIndex in 1..segmentTotal) {
+                val segmentReply = runCatching {
+                    danmakuStub?.dmSegMobile(dmSegMobileReq {
+                        pid = aid
+                        oid = cid
+                        type = 1
+                        this.segmentIndex = segmentIndex.toLong()
+                    }) ?: throw IllegalStateException("Danmaku stub is not initialized")
+                }.onFailure {
+                    handleGrpcException(it)
+                }.getOrThrow()
+
+                addAll(segmentReply.elemsList.map { it.toDanmakuData() })
+            }
+        }.sortedBy { it.time }
+    }
+
     suspend fun sendHeartbeat(
         aid: Long,
         cid: Long,
@@ -300,12 +371,11 @@ class VideoPlayRepository(
             }
         } ?: return emptyList()
 
-        val maskBinary = BiliHttpApi.download(danmakuMaskUrl.apply {
-            when (preferApiType) {
-                ApiType.Web -> replace("mobmask", "webmask")
-                ApiType.App -> replace("webmask", "mobmask")
-            }
-        })
+        val targetMaskUrl = when (preferApiType) {
+            ApiType.Web -> danmakuMaskUrl.replace("mobmask", "webmask")
+            ApiType.App -> danmakuMaskUrl.replace("webmask", "mobmask")
+        }
+        val maskBinary = BiliHttpApi.download(targetMaskUrl)
         val danmakuMaskType = when (preferApiType) {
             ApiType.Web -> DanmakuMaskType.WebMask
             ApiType.App -> DanmakuMaskType.MobMask
@@ -325,4 +395,17 @@ class VideoPlayRepository(
         val videoShot = VideoShot.fromVideoShot(videoShortResponse.getResponseData())
         return videoShot
     }
+
+    private fun bilibili.community.service.dm.v1.DanmakuElem.toDanmakuData() = DanmakuData(
+        time = progress / 1000f,
+        type = mode,
+        size = fontsize,
+        color = color.toInt(),
+        timestamp = ctime.toInt(),
+        pool = pool,
+        midHash = midHash,
+        dmid = id,
+        level = weight,
+        text = content
+    )
 }
