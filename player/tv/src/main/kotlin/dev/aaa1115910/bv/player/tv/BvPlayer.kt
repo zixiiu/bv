@@ -362,6 +362,7 @@ fun BvPlayer(
                         currentSponsorSegment = null
                         sponsorSkipCountdown = 0
                         videoPlayer.seekTo(skipToTime)
+                        mDanmakuPlayer?.seekTo(skipToTime)
                     }
                 }
             }
@@ -372,6 +373,7 @@ fun BvPlayer(
                 logger.info { "[SponsorBlock] Entered AUTO_SKIP segment directly: ${currentAutoSkipSegment.category}, skipping immediately" }
                 lastProcessedSegmentUUID = currentAutoSkipSegment.UUID
                 videoPlayer.seekTo(currentAutoSkipSegment.endTimeMs)
+                mDanmakuPlayer?.seekTo(currentAutoSkipSegment.endTimeMs)
             }
 
             // Case 3: Entered a MANUAL_SKIP segment - show tip

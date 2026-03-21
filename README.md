@@ -3,9 +3,12 @@
 <img src="app/shared/src/main/res/drawable/ic_banner.webp" style="border-radius: 24px; margin-top: 32px;"/>
 
 # zBV - z fork of BV
+
 - 不装了，移除了对大陆ip的限制
 - 播放界面有更快捷的设置菜单
-- 支持bilibilisponsorblock，只能开启，没有选项，没有UI，想要屏蔽请自行修改代码
+- 支持bilibilisponsorblock，只能开启，没有选项，没有UI，想要关闭请自行修改代码
+- 解决了弹幕加载412的问题
+- tv版视频详情页可以看评论了
 - 没有release，想用自己pull下来编译
 
 # BV

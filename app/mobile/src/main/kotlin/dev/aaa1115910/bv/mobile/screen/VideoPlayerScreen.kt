@@ -308,6 +308,7 @@ fun VideoPlayerScreen(
                             onBack = { (context as Activity).finish() },
                             onChangeResolution = { code, afterChange ->
                                 scope.launch(Dispatchers.IO) {
+                                    Prefs.defaultQuality = code
                                     playerViewModel.currentQuality = code
                                     playerViewModel.playQuality(code)
                                     afterChange()
@@ -315,6 +316,7 @@ fun VideoPlayerScreen(
                             },
                             onChangeVideoCodec = { codec, afterChange ->
                                 scope.launch(Dispatchers.IO) {
+                                    Prefs.defaultVideoCodec = codec
                                     playerViewModel.currentVideoCodec = codec
                                     playerViewModel.playQuality(codec = codec)
                                     afterChange()
@@ -322,6 +324,7 @@ fun VideoPlayerScreen(
                             },
                             onChangeAudio = { audio, afterChange ->
                                 scope.launch(Dispatchers.IO) {
+                                    Prefs.defaultAudio = audio
                                     playerViewModel.currentAudio = audio
                                     playerViewModel.playQuality(audio = audio)
                                     afterChange()
@@ -336,6 +339,7 @@ fun VideoPlayerScreen(
                                 Prefs.defaultDanmakuEnabled = enabled
                             },
                             onEnabledDanmakuTypesChange = { types ->
+                                Prefs.defaultDanmakuTypes = types
                                 playerViewModel.currentDanmakuTypes.swapList(types)
                             },
                             onDanmakuOpacityChange = { opacity ->
