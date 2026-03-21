@@ -351,7 +351,7 @@ fun VideoInfoScreen(
         if (intent.hasExtra("aid")) {
             val aid = intent.getLongExtra("aid", 170001)
             fromSeason = intent.getBooleanExtra("fromSeason", false)
-            proxyArea = ProxyArea.entries[intent.getIntExtra("proxyArea", 0)]
+            proxyArea = ProxyArea.entries[intent.getIntExtra("proxy_area", 0)]
             //获取视频信息
             scope.launch(Dispatchers.IO) {
                 if (proxyArea != ProxyArea.MainLand) {
@@ -510,7 +510,7 @@ fun VideoInfoScreen(
                     modifier = Modifier.fillMaxSize(),
                     painter = rememberAsyncImagePainter(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(if (videoDetailViewModel.videoDetail?.ugcSeason != null) videoDetailViewModel.videoDetail!!.ugcSeason!!.cover else videoDetailViewModel.videoDetail!!.cover)
+                            .data(videoDetailViewModel.videoDetail!!.displayCover)
                             .transformations(BlurTransformation(LocalContext.current, 20f, 5f))
                             .build()
                     ),
@@ -832,7 +832,7 @@ fun VideoInfoData(
         ) {
             AsyncImage(
                 modifier = Modifier.fillMaxSize(),
-                model = if (videoDetail.ugcSeason != null) videoDetail.ugcSeason!!.cover else videoDetail.cover,
+                model = videoDetail.displayCover,
                 contentDescription = null,
                 contentScale = ContentScale.Crop
             )
@@ -914,6 +914,9 @@ fun VideoInfoData(
         }
     }
 }
+
+private val VideoDetail.displayCover: String
+    get() = cover.ifBlank { ugcSeason?.cover.orEmpty() }
 
 @Composable
 private fun UpButton(
