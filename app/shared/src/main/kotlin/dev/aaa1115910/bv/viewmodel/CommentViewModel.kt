@@ -143,6 +143,7 @@ class CommentViewModel(
         logger.fInfo { "refresh replies" }
         nextCommentReplyPage = CommentReplyPage()
         hasMoreReplies = true
+        replyRootComment = null
         replies.clear()
         loadMoreReplies()
     }

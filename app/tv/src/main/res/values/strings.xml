@@ -21,6 +21,7 @@
     <string name="title_activity_user_info">用户信息</string>
     <string name="title_activity_user_lock_settings">用户锁设置</string>
     <string name="title_activity_user_switch">用户切换</string>
+    <string name="title_activity_video_comment_replies">评论回复</string>
     <string name="title_activity_video_info">视频信息</string>
     <string name="title_activity_video_player_v3">视频播放</string>
 </resources>

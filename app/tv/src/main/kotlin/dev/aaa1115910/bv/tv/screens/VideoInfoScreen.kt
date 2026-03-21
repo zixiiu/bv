@@ -106,6 +106,7 @@ import coil.request.ImageRequest
 import coil.transform.BlurTransformation
 import dev.aaa1115910.biliapi.entity.ApiType
 import dev.aaa1115910.biliapi.entity.FavoriteFolderMetadata
+import dev.aaa1115910.biliapi.entity.reply.CommentSort
 import dev.aaa1115910.biliapi.entity.video.Dimension
 import dev.aaa1115910.biliapi.entity.video.Tag
 import dev.aaa1115910.biliapi.entity.video.VideoDetail
@@ -121,6 +122,7 @@ import dev.aaa1115910.bv.player.entity.VideoListPart
 import dev.aaa1115910.bv.player.entity.VideoListUgcEpisode
 import dev.aaa1115910.bv.player.entity.VideoListUgcEpisodeTitle
 import dev.aaa1115910.bv.repository.VideoInfoRepository
+import dev.aaa1115910.bv.tv.activities.video.VideoCommentRepliesActivity
 import dev.aaa1115910.bv.tv.activities.video.SeasonInfoActivity
 import dev.aaa1115910.bv.tv.activities.video.TagActivity
 import dev.aaa1115910.bv.tv.activities.video.UpInfoActivity
@@ -128,9 +130,14 @@ import dev.aaa1115910.bv.tv.activities.video.VideoInfoActivity
 import dev.aaa1115910.bv.tv.component.TvAlertDialog
 import dev.aaa1115910.bv.tv.component.UpIcon
 import dev.aaa1115910.bv.tv.component.buttons.FavoriteButton
+import dev.aaa1115910.bv.tv.component.reply.VideoCommentCard
+import dev.aaa1115910.bv.tv.component.reply.VideoCommentEmpty
+import dev.aaa1115910.bv.tv.component.reply.VideoCommentLoading
+import dev.aaa1115910.bv.tv.component.reply.VideoCommentSortBar
 import dev.aaa1115910.bv.tv.component.videocard.VideosRow
 import dev.aaa1115910.bv.tv.util.launchPlayerActivity
 import dev.aaa1115910.bv.ui.theme.BVTheme
+import dev.aaa1115910.bv.util.OnBottomReached
 import dev.aaa1115910.bv.util.Prefs
 import dev.aaa1115910.bv.util.fDebug
 import dev.aaa1115910.bv.util.fInfo
@@ -143,6 +150,7 @@ import dev.aaa1115910.bv.util.requestFocus
 import dev.aaa1115910.bv.util.swapList
 import dev.aaa1115910.bv.util.swapListWithMainContext
 import dev.aaa1115910.bv.util.toast
+import dev.aaa1115910.bv.viewmodel.CommentViewModel
 import dev.aaa1115910.bv.viewmodel.video.VideoDetailViewModel
 import dev.aaa1115910.bv.viewmodel.video.VideoInfoState
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -160,6 +168,7 @@ fun VideoInfoScreen(
     lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
     videoInfoRepository: VideoInfoRepository = getKoin().get(),
     videoDetailViewModel: VideoDetailViewModel = koinViewModel(),
+    commentViewModel: CommentViewModel = koinViewModel(),
     userRepository: UserRepository = getKoin().get(),
     favoriteRepository: FavoriteRepository = getKoin().get(),
 ) {
@@ -168,6 +177,7 @@ fun VideoInfoScreen(
     val intent = (context as Activity).intent
     val logger = KotlinLogging.logger { }
     val defaultFocusRequester = remember { FocusRequester() }
+    val screenListState = rememberLazyListState()
 
     var showFollowButton by remember { mutableStateOf(false) }
     var isFollowing by remember { mutableStateOf(false) }
@@ -480,6 +490,26 @@ fun VideoInfoScreen(
         }
     }
 
+    LaunchedEffect(videoDetailViewModel.videoDetail?.aid, fromSeason) {
+        val aid = videoDetailViewModel.videoDetail?.aid ?: return@LaunchedEffect
+        if (fromSeason || videoDetailViewModel.videoDetail?.redirectToEp == true) return@LaunchedEffect
+
+        commentViewModel.commentId = aid
+        commentViewModel.commentType = 1
+        commentViewModel.commentSort = CommentSort.Hot
+        withContext(Dispatchers.IO) {
+            commentViewModel.refreshComments()
+        }
+    }
+
+    if (commentViewModel.comments.isNotEmpty()) {
+        screenListState.OnBottomReached(loading = commentViewModel.updatingComments) {
+            scope.launch(Dispatchers.IO) {
+                commentViewModel.loadMoreComment()
+            }
+        }
+    }
+
     if (videoDetailViewModel.videoDetail == null || videoDetailViewModel.videoDetail?.redirectToEp == true || fromSeason) {
         Box(
             modifier = Modifier
@@ -519,6 +549,7 @@ fun VideoInfoScreen(
                     alpha = 0.6f
                 )
                 LazyColumn(
+                    state = screenListState,
                     contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -730,6 +761,50 @@ fun VideoInfoScreen(
                                     VideoInfoActivity.actionStart(context, videoData.avid)
                                 }
                             )
+                        }
+                    }
+                    item {
+                        VideoCommentSortBar(
+                            modifier = Modifier.padding(horizontal = 50.dp, vertical = 16.dp),
+                            title = stringResource(R.string.video_info_comments_title),
+                            selectedSort = commentViewModel.commentSort,
+                            onSortChange = { sort ->
+                                if (sort == commentViewModel.commentSort) return@VideoCommentSortBar
+                                scope.launch(Dispatchers.IO) {
+                                    commentViewModel.switchCommentSort(sort)
+                                }
+                            }
+                        )
+                    }
+                    items(
+                        items = commentViewModel.comments,
+                        key = { it.rpid }
+                    ) { comment ->
+                        VideoCommentCard(
+                            modifier = Modifier.padding(horizontal = 50.dp),
+                            comment = comment,
+                            onOpenReplies = if (maxOf(comment.repliesCount, comment.replies.size) > 0) {
+                                {
+                                    VideoCommentRepliesActivity.actionStart(
+                                        context = context,
+                                        aid = videoDetailViewModel.videoDetail!!.aid,
+                                        rpid = comment.rpid,
+                                        repliesCount = maxOf(comment.repliesCount, comment.replies.size)
+                                    )
+                                }
+                            } else {
+                                null
+                            }
+                        )
+                    }
+                    if (commentViewModel.comments.isEmpty() && !(commentViewModel.refreshingComments || commentViewModel.updatingComments)) {
+                        item {
+                            VideoCommentEmpty(modifier = Modifier.padding(horizontal = 50.dp))
+                        }
+                    }
+                    if (commentViewModel.refreshingComments || commentViewModel.updatingComments) {
+                        item {
+                            VideoCommentLoading(modifier = Modifier.padding(horizontal = 50.dp))
                         }
                     }
                 }
