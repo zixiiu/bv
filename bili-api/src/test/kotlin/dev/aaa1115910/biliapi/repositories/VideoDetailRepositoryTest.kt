@@ -6,6 +6,7 @@ import dev.aaa1115910.biliapi.entity.reply.CommentReplyPage
 import dev.aaa1115910.biliapi.entity.reply.CommentSort
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Paths
@@ -345,6 +346,7 @@ class VideoDetailRepositoryTest {
         }
     }
 
+    @Disabled("Debug-only protobuf payload parsing")
     @Test
     fun foo() {
         val base64 =
@@ -358,6 +360,7 @@ class VideoDetailRepositoryTest {
         println(req)
     }
 
+    @Disabled("Debug-only protobuf payload parsing")
     @Test
     fun foo2() {
         val base64 = "Cg42N+S6uuato+WcqOecixAeGAEqEjY35Lq65ZCM5pe25Zyo55yLfjoCNjc="

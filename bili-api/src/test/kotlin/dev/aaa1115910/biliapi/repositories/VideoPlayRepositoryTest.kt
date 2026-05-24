@@ -8,6 +8,7 @@ import dev.aaa1115910.biliapi.grpc.utils.getDetail
 import dev.aaa1115910.biliapi.http.BiliHttpProxyApi
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.net.URL
@@ -305,6 +306,10 @@ class VideoPlayRepositoryTest {
 
     @Test
     fun `get region limited pgc play data`() = runBlocking {
+        assumeTrue(
+            HTTP_PROXY_SERVER.isNotBlank() && GRPC_PROXY_SERVER.isNotBlank(),
+            "Proxy-based test requires both HTTP and gRPC proxy servers"
+        )
         val cid = 1199794768L
         val epid = 763396
         val enableProxy = true
