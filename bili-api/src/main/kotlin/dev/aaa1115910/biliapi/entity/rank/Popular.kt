@@ -12,4 +12,6 @@ data class PopularVideoPage(
     val nextWebPageSize: Int = 20,
     val nextWebPageNumber: Int = 1,
     val nextAppIndex: Int = 0,
+    val nextAppLastParam: String = "",
+    val nextAppVer: String = "",
 )

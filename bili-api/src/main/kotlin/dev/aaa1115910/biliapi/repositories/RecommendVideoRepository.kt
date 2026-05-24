@@ -9,6 +9,7 @@ import dev.aaa1115910.biliapi.entity.rank.PopularVideoData
 import dev.aaa1115910.biliapi.entity.rank.PopularVideoPage
 import dev.aaa1115910.biliapi.entity.ugc.UgcItem
 import dev.aaa1115910.biliapi.http.BiliHttpApi
+import kotlinx.coroutines.delay
 import org.koin.core.annotation.Single
 
 @Single
@@ -25,77 +26,119 @@ class RecommendVideoRepository(
         page: PopularVideoPage,
         preferApiType: ApiType = ApiType.Web
     ): PopularVideoData {
-        return when (preferApiType) {
-            ApiType.Web -> {
-                val response = BiliHttpApi.getPopularVideoData(
-                    pageSize = page.nextWebPageSize,
-                    pageNumber = page.nextWebPageNumber,
-                    sessData = authRepository.sessionData ?: ""
-                ).getResponseData()
-                val list = response.list.map { UgcItem.fromVideoInfo(it) }
-                val nextPage = PopularVideoPage(
-                    nextWebPageSize = page.nextWebPageSize,
-                    nextWebPageNumber = page.nextWebPageNumber + 1
-                )
-                PopularVideoData(
-                    list = list,
-                    nextPage = nextPage,
-                    noMore = response.noMore
-                )
-            }
-
-            ApiType.App -> {
-                val reply = popularStub?.index(popularResultReq {
-                    idx = page.nextAppIndex.toLong()
-                })
-                val list = reply?.itemsList
-                    ?.filter { it.itemCase == bilibili.app.card.v1.Card.ItemCase.SMALL_COVER_V5 }
-                    ?.map { UgcItem.fromSmallCoverV5(it.smallCoverV5) }
-                    ?: emptyList()
-                val nextPage = PopularVideoPage(
-                    nextAppIndex = list.lastOrNull()?.idx ?: -1
-                )
-                PopularVideoData(
-                    list = list,
-                    nextPage = nextPage,
-                    noMore = nextPage.nextAppIndex == -1
-                )
-            }
+        if (preferApiType == ApiType.App && page.nextAppIndex == -1) {
+            return PopularVideoData(
+                list = emptyList(),
+                nextPage = page,
+                noMore = true
+            )
         }
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getPopularVideos(page=$page)",
+            web = {
+            val response = BiliHttpApi.getPopularVideoData(
+                pageSize = page.nextWebPageSize,
+                pageNumber = page.nextWebPageNumber,
+                sessData = authRepository.sessionData ?: ""
+            ).getResponseData()
+            val list = response.list.map { UgcItem.fromVideoInfo(it) }
+            val nextPage = PopularVideoPage(
+                nextWebPageSize = page.nextWebPageSize,
+                nextWebPageNumber = page.nextWebPageNumber + 1
+            )
+            PopularVideoData(
+                list = list,
+                nextPage = nextPage,
+                noMore = response.noMore
+            )
+        },
+            app = {
+            val request = popularResultReq {
+                idx = page.nextAppIndex.toLong()
+                if (page.nextAppIndex == 0) {
+                    loginEvent = if (authRepository.accessToken.isNullOrBlank()) 1 else 2
+                }
+                if (page.nextAppLastParam.isNotBlank()) {
+                    lastParam = page.nextAppLastParam
+                }
+                if (page.nextAppVer.isNotBlank()) {
+                    ver = page.nextAppVer
+                }
+            }
+            val reply = runCatching {
+                popularStub?.index(request)
+            }.recoverCatching { error ->
+                if (page.nextAppIndex <= 0 || !error.isPopularPagingRateLimited()) {
+                    throw error
+                }
+                delay(500)
+                popularStub?.index(request)
+            }.getOrElse { error ->
+                if (page.nextAppIndex > 0 && error.isPopularPagingRateLimited()) {
+                    return@preferApiOrFallbackToApp PopularVideoData(
+                        list = emptyList(),
+                        nextPage = page.copy(nextAppIndex = -1),
+                        noMore = true
+                    )
+                }
+                throw error
+            }
+            val list = reply?.itemsList
+                ?.filter { it.itemCase == bilibili.app.card.v1.Card.ItemCase.SMALL_COVER_V5 }
+                ?.map { UgcItem.fromSmallCoverV5(it.smallCoverV5) }
+                ?: emptyList()
+            val lastCard = reply?.itemsList
+                ?.lastOrNull { it.itemCase == bilibili.app.card.v1.Card.ItemCase.SMALL_COVER_V5 }
+                ?.smallCoverV5
+            val nextPage = PopularVideoPage(
+                nextAppIndex = list.lastOrNull()?.idx ?: -1,
+                nextAppLastParam = lastCard?.base?.param ?: "",
+                nextAppVer = reply?.ver ?: ""
+            )
+            PopularVideoData(
+                list = list,
+                nextPage = nextPage,
+                noMore = nextPage.nextAppIndex == -1
+            )
+        })
     }
 
     suspend fun getRecommendVideos(
         page: RecommendPage = RecommendPage(),
         preferApiType: ApiType = ApiType.Web
     ): RecommendData {
-        val items = when (preferApiType) {
-            ApiType.Web -> BiliHttpApi.getFeedRcmd(
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getRecommendVideos(page=$page)",
+            web = {
+            val items = BiliHttpApi.getFeedRcmd(
                 idx = page.nextWebIdx,
                 sessData = authRepository.sessionData
-            )
-                .getResponseData().item
+            ).getResponseData().item
                 .map { UgcItem.fromRcmdItem(it) }
-
-            ApiType.App -> BiliHttpApi.getFeedIndex(
+            RecommendData(
+                items = items,
+                nextPage = RecommendPage(nextWebIdx = page.nextWebIdx + 1)
+            )
+        },
+            app = {
+            val items = BiliHttpApi.getFeedIndex(
                 idx = page.nextAppIdx,
                 accessKey = authRepository.accessToken
-            )
-                .getResponseData().items
+            ).getResponseData().items
                 .filter { it.cardGoto == "av" }
                 .map { UgcItem.fromRcmdItem(it) }
-        }
-        val nextPage = when (preferApiType) {
-            ApiType.Web -> RecommendPage(
-                nextWebIdx = page.nextWebIdx + 1
+            RecommendData(
+                items = items,
+                nextPage = RecommendPage(
+                    nextAppIdx = items.firstOrNull()?.idx?.plus(1) ?: page.nextAppIdx + 1
+                )
             )
-
-            ApiType.App -> RecommendPage(
-                nextAppIdx = items.first().idx + 1
-            )
-        }
-        return RecommendData(
-            items = items,
-            nextPage = nextPage
-        )
+        })
     }
+}
+
+private fun Throwable.isPopularPagingRateLimited(): Boolean {
+    return message?.contains("78000") == true
 }

@@ -118,55 +118,55 @@ class SearchRepository(
         preferApiType: ApiType = ApiType.App,
         enableProxy: Boolean = false
     ): SearchTypeResult {
-        return when (preferApiType) {
-            ApiType.Web -> {
-                val response = if (enableProxy) {
-                    BiliHttpProxyApi.searchType(
-                        keyword = keyword,
-                        type = type.httpTypeParam,
-                        page = page.nextPageForWeb,
-                        tid = tid,
-                        order = order.httpOrderParam,
-                        duration = duration.httpDurationParam,
-                        buvid3 = authRepository.buvid3!!,
-                    )
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "searchType(keyword=$keyword, type=$type)",
+            web = {
+            val response = if (enableProxy) {
+                BiliHttpProxyApi.searchType(
+                    keyword = keyword,
+                    type = type.httpTypeParam,
+                    page = page.nextPageForWeb,
+                    tid = tid,
+                    order = order.httpOrderParam,
+                    duration = duration.httpDurationParam,
+                    buvid3 = authRepository.buvid3!!,
+                )
+            } else {
+                BiliHttpApi.searchType(
+                    keyword = keyword,
+                    type = type.httpTypeParam,
+                    page = page.nextPageForWeb,
+                    tid = tid,
+                    order = order.httpOrderParam,
+                    duration = duration.httpDurationParam,
+                    buvid3 = authRepository.buvid3!!,
+                )
+            }.getResponseData()
+            SearchTypeResult.fromSearchTypeResult(response)
+        },
+            app = {
+            val searchTypeReply = runCatching {
+                val searchTypeRequest = searchByTypeRequest {
+                    this.keyword = keyword
+                    this.type = type.grpcTypeParam
+                    categorySort = order.grpcOrderParam
+                    userType = SearchByTypeRequest.UserType.ALL
+                    userSort = SearchByTypeRequest.UserSort.USER_SORT_DEFAULT
+                    pagination = pagination {
+                        next = page.nextPageForApp
+                    }
+                }
+                if (enableProxy) {
+                    proxySearchResultStub?.searchByType(searchTypeRequest)
+                        ?: throw IllegalStateException("Proxy search result stub is not initialized")
                 } else {
-                    BiliHttpApi.searchType(
-                        keyword = keyword,
-                        type = type.httpTypeParam,
-                        page = page.nextPageForWeb,
-                        tid = tid,
-                        order = order.httpOrderParam,
-                        duration = duration.httpDurationParam,
-                        buvid3 = authRepository.buvid3!!,
-                    )
-                }.getResponseData()
-                SearchTypeResult.fromSearchTypeResult(response)
-            }
-
-            ApiType.App -> {
-                val searchTypeReply = runCatching {
-                    val searchTypeRequest = searchByTypeRequest {
-                        this.keyword = keyword
-                        this.type = type.grpcTypeParam
-                        categorySort = order.grpcOrderParam
-                        userType = SearchByTypeRequest.UserType.ALL
-                        userSort = SearchByTypeRequest.UserSort.USER_SORT_DEFAULT
-                        pagination = pagination {
-                            next = page.nextPageForApp
-                        }
-                    }
-                    if (enableProxy) {
-                        proxySearchResultStub?.searchByType(searchTypeRequest)
-                            ?: throw IllegalStateException("Proxy search result stub is not initialized")
-                    } else {
-                        searchResultStub?.searchByType(searchTypeRequest)
-                            ?: throw IllegalStateException("Search result stub is not initialized")
-                    }
-                }.onFailure { handleGrpcException(it) }.getOrThrow()
-                SearchTypeResult.fromSearchTypeResult(searchTypeReply)
-            }
-        }
+                    searchResultStub?.searchByType(searchTypeRequest)
+                        ?: throw IllegalStateException("Search result stub is not initialized")
+                }
+            }.onFailure { handleGrpcException(it) }.getOrThrow()
+            SearchTypeResult.fromSearchTypeResult(searchTypeReply)
+        })
     }
 }
 

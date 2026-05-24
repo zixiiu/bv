@@ -33,69 +33,26 @@ class CommentRepository(
         page: CommentPage = CommentPage(),
         preferApiType: ApiType = ApiType.Web
     ): CommentsData {
-        when (preferApiType) {
-            ApiType.Web -> {
-                val webComments = BiliHttpApi.getComments(
-                    oid = id,
-                    type = type,
-                    mode = sort.param,
-                    paginationStr = Json.encodeToString(mapOf("offset" to page.nextWebPage)),
-                    sessData = authRepository.sessionData ?: "",
-                    buvid3 = authRepository.buvid3 ?: ""
-                ).getResponseData()
-                return CommentsData.fromCommentData(webComments)
-            }
-
-            ApiType.App -> {
-                runCatching {
-                    val appComments = replyStub?.mainList(
-                        mainListReq {
-                            this.oid = id.toLong()
-                            this.type = type.toLong()
-                            mode = when (sort) {
-                                CommentSort.Hot -> Mode.MAIN_LIST_HOT
-                                CommentSort.HotAndTime -> Mode.DEFAULT
-                                CommentSort.Time -> Mode.MAIN_LIST_TIME
-                            }
-                            pagination = feedPagination {
-                                offset = page.nextAppPage
-                            }
-                        }
-                    ) ?: throw IllegalStateException("Reply stub is not initialized")
-                    return CommentsData.fromMainListReply(appComments)
-                }.onFailure {
-                    handleGrpcException(it)
-                }.getOrThrow()
-            }
-        }
-    }
-
-    suspend fun getCommentReplies(
-        rpid: Long,
-        type: Long,
-        commentId: Long,
-        page: CommentReplyPage = CommentReplyPage(),
-        sort: CommentSort = CommentSort.Hot,
-        preferApiType: ApiType = ApiType.Web
-    ): CommentRepliesData {
-        when (preferApiType) {
-            ApiType.Web -> {
-                val webReplies = BiliHttpApi.getCommentReplies(
-                    oid = commentId,
-                    type = type,
-                    root = rpid,
-                    pageSize = 20,
-                    pageNumber = page.nextWebPage,
-                ).getResponseData()
-                return CommentRepliesData.fromCommentReplyData(webReplies)
-            }
-
-            ApiType.App -> {
-                val appReplies = replyStub?.detailList(
-                    detailListReq {
-                        this.oid = commentId
-                        this.type = type
-                        root = rpid
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getComments(id=$id, type=$type)",
+            web = {
+            val webComments = BiliHttpApi.getComments(
+                oid = id,
+                type = type,
+                mode = sort.param,
+                paginationStr = Json.encodeToString(mapOf("offset" to page.nextWebPage)),
+                sessData = authRepository.sessionData ?: "",
+                buvid3 = authRepository.buvid3 ?: ""
+            ).getResponseData()
+            CommentsData.fromCommentData(webComments)
+        },
+            app = {
+            runCatching {
+                val appComments = replyStub?.mainList(
+                    mainListReq {
+                        this.oid = id.toLong()
+                        this.type = type.toLong()
                         mode = when (sort) {
                             CommentSort.Hot -> Mode.MAIN_LIST_HOT
                             CommentSort.HotAndTime -> Mode.DEFAULT
@@ -106,8 +63,51 @@ class CommentRepository(
                         }
                     }
                 ) ?: throw IllegalStateException("Reply stub is not initialized")
-                return CommentRepliesData.fromCommentReplyList(appReplies)
-            }
-        }
+                CommentsData.fromMainListReply(appComments)
+            }.onFailure {
+                handleGrpcException(it)
+            }.getOrThrow()
+        })
+    }
+
+    suspend fun getCommentReplies(
+        rpid: Long,
+        type: Long,
+        commentId: Long,
+        page: CommentReplyPage = CommentReplyPage(),
+        sort: CommentSort = CommentSort.Hot,
+        preferApiType: ApiType = ApiType.Web
+    ): CommentRepliesData {
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getCommentReplies(rpid=$rpid, commentId=$commentId)",
+            web = {
+            val webReplies = BiliHttpApi.getCommentReplies(
+                oid = commentId,
+                type = type,
+                root = rpid,
+                pageSize = 20,
+                pageNumber = page.nextWebPage,
+            ).getResponseData()
+            CommentRepliesData.fromCommentReplyData(webReplies)
+        },
+            app = {
+            val appReplies = replyStub?.detailList(
+                detailListReq {
+                    this.oid = commentId
+                    this.type = type
+                    root = rpid
+                    mode = when (sort) {
+                        CommentSort.Hot -> Mode.MAIN_LIST_HOT
+                        CommentSort.HotAndTime -> Mode.DEFAULT
+                        CommentSort.Time -> Mode.MAIN_LIST_TIME
+                    }
+                    pagination = feedPagination {
+                        offset = page.nextAppPage
+                    }
+                }
+            ) ?: throw IllegalStateException("Reply stub is not initialized")
+            CommentRepliesData.fromCommentReplyList(appReplies)
+        })
     }
 }

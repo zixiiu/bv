@@ -22,24 +22,24 @@ class HistoryRepository(
         cursor: Long,
         preferApiType: ApiType = ApiType.Web
     ): HistoryData {
-        return when (preferApiType) {
-            ApiType.Web -> {
-                val data = BiliHttpApi.getHistories(
-                    viewAt = cursor,
-                    sessData = authRepository.sessionData!!,
-                ).getResponseData()
-                HistoryData.fromHistoryResponse(data)
-            }
-
-            ApiType.App -> {
-                val reply = historyStub?.cursorV2(cursorV2Req {
-                    this.cursor = cursor {
-                        max = cursor
-                    }
-                    business = "archive"
-                })
-                HistoryData.fromHistoryResponse(reply!!)
-            }
-        }
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getHistories(cursor=$cursor)",
+            web = {
+            val data = BiliHttpApi.getHistories(
+                viewAt = cursor,
+                sessData = authRepository.sessionData!!,
+            ).getResponseData()
+            HistoryData.fromHistoryResponse(data)
+        },
+            app = {
+            val reply = historyStub?.cursorV2(cursorV2Req {
+                this.cursor = cursor {
+                    max = cursor
+                }
+                business = "archive"
+            })
+            HistoryData.fromHistoryResponse(reply!!)
+        })
     }
 }

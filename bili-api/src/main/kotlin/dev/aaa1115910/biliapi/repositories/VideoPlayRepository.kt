@@ -56,62 +56,60 @@ class VideoPlayRepository(
         cid: Long,
         preferApiType: ApiType = ApiType.Web
     ): PlayData {
-        return when (preferApiType) {
-            ApiType.Web -> {
-                val playUrlData = BiliHttpApi.getVideoPlayUrl(
-                    av = aid,
-                    cid = cid,
-                    fnval = 4048,
-                    qn = 127,
-                    fnver = 0,
-                    fourk = 1,
-                    sessData = authRepository.sessionData,
-                    dedeUserID = authRepository.mid
-                ).getResponseData()
-                PlayData.fromPlayUrlData(playUrlData)
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getPlayData(aid=$aid, cid=$cid)",
+            web = {
+            val playUrlData = BiliHttpApi.getVideoPlayUrl(
+                av = aid,
+                cid = cid,
+                fnval = 4048,
+                qn = 127,
+                fnver = 0,
+                fourk = 1,
+                sessData = authRepository.sessionData,
+                dedeUserID = authRepository.mid
+            ).getResponseData()
+            PlayData.fromPlayUrlData(playUrlData)
+        },
+            app = {
+            withContext(Dispatchers.IO) {
+                val codecTypes = listOf(
+                    CodeType.Code264,
+                    CodeType.Code265,
+                    CodeType.CodeAv1
+                )
+                val replies = codecTypes.map { codecType ->
+                    async {
+                        val playUniteReply = runCatching {
+                            playerStub?.playViewUnite(playViewUniteReq {
+                                vod = videoVod {
+                                    this.aid = aid
+                                    this.cid = cid
+                                    fnval = 4048
+                                    qn = 127
+                                    fnver = 0
+                                    fourk = true
+                                    preferCodecType = codecType.toPlayerSharedCodeType()
+                                }
+                            }) ?: throw IllegalStateException("Player stub is not initialized")
+                        }.onFailure {
+                            runCatching { handleGrpcException(it) }
+                                .onFailure {
+                                    println("get play data failed: [aid=$aid, cid=$cid, preferCodec=$codecType, preferApiType=$preferApiType]")
+                                    it.printStackTrace()
+                                }
+                        }.getOrNull()
+                        playUniteReply
+                    }
+                }.awaitAll()
+                replies.map {
+                    it?.let { PlayData.fromPlayViewUniteReply(it) }
+                }.reduce { acc, playData ->
+                    acc?.let { playData?.let { acc + playData } ?: acc } ?: playData
+                } ?: throw IllegalStateException("All codec types are failed to get play data")
             }
-
-            ApiType.App -> {
-                withContext(Dispatchers.IO) {
-                    val codecTypes = listOf(
-                        CodeType.Code264,
-                        CodeType.Code265,
-                        CodeType.CodeAv1
-                    )
-                    val replies = codecTypes.map { codecType ->
-                        async {
-                            val playUniteReply = runCatching {
-                                playerStub?.playViewUnite(playViewUniteReq {
-                                    vod = videoVod {
-                                        this.aid = aid
-                                        this.cid = cid
-                                        fnval = 4048
-                                        qn = 127
-                                        fnver = 0
-                                        fourk = true
-                                        preferCodecType = codecType.toPlayerSharedCodeType()
-                                    }
-                                }) ?: throw IllegalStateException("Player stub is not initialized")
-                            }.onFailure {
-                                // dont throw
-                                runCatching { handleGrpcException(it) }
-                                    .onFailure {
-                                        println("get play data failed: [aid=$aid, cid=$cid, preferCodec=$codecType, preferApiType=$preferApiType]")
-                                        it.printStackTrace()
-                                    }
-                            }.getOrNull()
-                            playUniteReply
-                        }
-                    }.awaitAll()
-                    val result = replies.map {
-                        it?.let { PlayData.fromPlayViewUniteReply(it) }
-                    }.reduce { acc, playData ->
-                        acc?.let { playData?.let { acc + playData } ?: acc } ?: playData
-                    } ?: throw IllegalStateException("All codec types are failed to get play data")
-                    result
-                }
-            }
-        }
+        })
     }
 
     suspend fun getPgcPlayData(
@@ -124,84 +122,81 @@ class VideoPlayRepository(
         proxyArea: String = ""
     ): PlayData {
         println("get pgc play data: [aid=$aid, cid=$cid, epid=$epid, preferCodec=$preferCodec, preferApiType=$preferApiType, enableProxy=$enableProxy, proxyArea=$proxyArea]")
-        return when (preferApiType) {
-            ApiType.Web -> {
-                val playUrlData = if (enableProxy) {
-                    BiliHttpProxyApi.getPgcVideoPlayUrl(
-                        av = aid,
-                        cid = cid,
-                        epid = epid,
-                        fnval = 4048,
-                        qn = 127,
-                        fnver = 0,
-                        fourk = 1,
-                        sessData = authRepository.sessionData,
-                        dedeUserID = authRepository.mid
-                    )
-                } else {
-                    BiliHttpApi.getPgcVideoPlayUrl(
-                        av = aid,
-                        cid = cid,
-                        fnval = 4048,
-                        qn = 127,
-                        fnver = 0,
-                        fourk = 1,
-                        sessData = authRepository.sessionData,
-                        dedeUserID = authRepository.mid
-                    )
-                }.getResponseData()
-
-                PlayData.fromPlayUrlData(playUrlData)
-            }
-
-            ApiType.App -> {
-                withContext(Dispatchers.IO) {
-                    val codecTypes = listOf(
-                        CodeType.Code264,
-                        CodeType.Code265,
-                        CodeType.CodeAv1
-                    )
-                    val replies = codecTypes.map { codecType ->
-                        val req = playViewReq {
-                            this.epid = epid.toLong()
-                            cid?.let { this.cid = it }
-                            qn = 127
-                            fnver = 0
-                            fnval = 4048
-                            fourk = true
-                            forceHost = 0
-                            download = 0
-                            preferCodecType = codecType.toPgcPlayUrlCodeType()
-                        }
-                        async {
-                            val playReply = runCatching {
-                                if (enableProxy) {
-                                    proxyPgcPlayUrlStub?.playView(req)
-                                        ?: throw IllegalStateException("Proxy pgc play url stub is not initialized")
-                                } else {
-                                    pgcPlayUrlStub?.playView(req)
-                                        ?: throw IllegalStateException("Pgc play url stub is not initialized")
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getPgcPlayData(aid=$aid, cid=$cid, epid=$epid)",
+            web = {
+            val playUrlData = if (enableProxy) {
+                BiliHttpProxyApi.getPgcVideoPlayUrl(
+                    av = aid,
+                    cid = cid,
+                    epid = epid,
+                    fnval = 4048,
+                    qn = 127,
+                    fnver = 0,
+                    fourk = 1,
+                    sessData = authRepository.sessionData,
+                    dedeUserID = authRepository.mid
+                )
+            } else {
+                BiliHttpApi.getPgcVideoPlayUrl(
+                    av = aid,
+                    cid = cid,
+                    fnval = 4048,
+                    qn = 127,
+                    fnver = 0,
+                    fourk = 1,
+                    sessData = authRepository.sessionData,
+                    dedeUserID = authRepository.mid
+                )
+            }.getResponseData()
+            PlayData.fromPlayUrlData(playUrlData)
+        },
+            app = {
+            withContext(Dispatchers.IO) {
+                val codecTypes = listOf(
+                    CodeType.Code264,
+                    CodeType.Code265,
+                    CodeType.CodeAv1
+                )
+                val replies = codecTypes.map { codecType ->
+                    val req = playViewReq {
+                        this.epid = epid.toLong()
+                        cid?.let { this.cid = it }
+                        qn = 127
+                        fnver = 0
+                        fnval = 4048
+                        fourk = true
+                        forceHost = 0
+                        download = 0
+                        preferCodecType = codecType.toPgcPlayUrlCodeType()
+                    }
+                    async {
+                        val playReply = runCatching {
+                            if (enableProxy) {
+                                proxyPgcPlayUrlStub?.playView(req)
+                                    ?: throw IllegalStateException("Proxy pgc play url stub is not initialized")
+                            } else {
+                                pgcPlayUrlStub?.playView(req)
+                                    ?: throw IllegalStateException("Pgc play url stub is not initialized")
+                            }
+                        }.onFailure {
+                            runCatching { handleGrpcException(it) }
+                                .onFailure {
+                                    println("get pgc play data failed: [aid=$aid, cid=$cid, epid=$epid, preferCodec=$codecType, preferApiType=$preferApiType]")
+                                    it.printStackTrace()
                                 }
-                            }.onFailure {
-                                // dont throw
-                                runCatching { handleGrpcException(it) }
-                                    .onFailure {
-                                        println("get pgc play data failed: [aid=$aid, cid=$cid, epid=$epid, preferCodec=$codecType, preferApiType=$preferApiType]")
-                                        it.printStackTrace()
-                                    }
-                            }.getOrNull()
-                            playReply
-                        }
-                    }.awaitAll()
-                    val result = replies.map {
-                        it?.let { PlayData.fromPgcPlayViewReply(it) }
-                    }.reduce { acc, playData ->
-                        acc?.let { playData?.let { acc + playData } ?: acc } ?: playData
-                    } ?: throw IllegalStateException("All codec types are failed to get play data")
-                    result
-                }
+                        }.getOrNull()
+                        playReply
+                    }
+                }.awaitAll()
+                replies.map {
+                    it?.let { PlayData.fromPgcPlayViewReply(it) }
+                }.reduce { acc, playData ->
+                    acc?.let { playData?.let { acc + playData } ?: acc } ?: playData
+                } ?: throw IllegalStateException("All codec types are failed to get play data")
             }
-        }
+        })
     }
 
     suspend fun getSubtitle(

@@ -31,53 +31,59 @@ class SeasonRepository(
         pageSize: Int = 30,
         preferApiType: ApiType = ApiType.Web
     ): FollowingSeasonData {
-        return when (preferApiType) {
-            ApiType.Web -> BiliHttpApi.getFollowingSeasons(
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getFollowingSeasons(type=$type, status=$status)",
+            web = {
+            BiliHttpApi.getFollowingSeasons(
                 type = type.id,
                 status = status.id,
                 pageNumber = pageNumber,
                 pageSize = pageSize,
                 mid = authRepository.mid!!,
                 sessData = authRepository.sessionData
-            ).getResponseData()
-                .let { responseData ->
-                    FollowingSeasonData(
-                        list = responseData.list.map { FollowingSeason.fromFollowingSeason(it) },
-                        total = responseData.total
-                    )
-                }
-
-            ApiType.App -> BiliHttpApi.getFollowingSeasons(
+            ).getResponseData().let { responseData ->
+                FollowingSeasonData(
+                    list = responseData.list.map { FollowingSeason.fromFollowingSeason(it) },
+                    total = responseData.total
+                )
+            }
+        },
+            app = {
+            BiliHttpApi.getFollowingSeasons(
                 type = type.paramName,
                 status = status.id,
                 pageNumber = pageNumber,
                 pageSize = pageSize,
                 build = BiliAppConf.APP_BUILD_CODE,
                 accessKey = authRepository.accessToken!!
-            ).getResponseData()
-                .let { responseData ->
-                    FollowingSeasonData(
-                        list = responseData.followList.map { FollowingSeason.fromFollowingSeason(it) },
-                        total = responseData.total
-                    )
-                }
-        }
+            ).getResponseData().let { responseData ->
+                FollowingSeasonData(
+                    list = responseData.followList.map { FollowingSeason.fromFollowingSeason(it) },
+                    total = responseData.total
+                )
+            }
+        })
     }
 
     suspend fun getTimeline(
         filter: TimelineFilter = TimelineFilter.All,
         preferApiType: ApiType = ApiType.Web
     ): List<Timeline> {
-        return when (preferApiType) {
-            ApiType.Web -> BiliHttpApi.getTimeline(
+        return preferApiOrFallbackToApp(
+            preferApiType = preferApiType,
+            operation = "getTimeline(filter=$filter)",
+            web = {
+            BiliHttpApi.getTimeline(
                 type = filter.webFilterId,
                 before = 7,
                 after = 7
             ).getResponseData().map { Timeline.fromTimeline(it) }
-
-            ApiType.App -> BiliHttpApi.getTimeline(
+        },
+            app = {
+            BiliHttpApi.getTimeline(
                 filterType = filter.appFilterId
             ).getResponseData().data.map { Timeline.fromTimeline(it) }
-        }
+        })
     }
 }
