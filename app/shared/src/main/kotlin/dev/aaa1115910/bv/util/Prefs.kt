@@ -410,7 +410,7 @@ object PrefKeys {
     val prefAlphaRequest = PreferenceRequest(prefAlphaKey, BuildConfig.BUILD_TYPE == "alpha")
     val prefAccessTokenRequest = PreferenceRequest(prefAccessTokenKey, "")
     val prefRefreshTokenRequest = PreferenceRequest(prefRefreshTokenKey, "")
-    val prefApiTypeRequest = PreferenceRequest(prefApiTypeKey, 0)
+    val prefApiTypeRequest = PreferenceRequest(prefApiTypeKey, ApiType.App.ordinal)
     val prefEnabelProxyRequest = PreferenceRequest(prefEnableProxyKey, false)
     val prefProxyHttpServerRequest = PreferenceRequest(prefProxyHttpServerKey, "")
     val prefProxyGRPCServerRequest = PreferenceRequest(prefProxyGRPCServerKey, "")
