@@ -111,13 +111,14 @@ fun VideoCommentCard(
     val displayReplyCount = maxOf(comment.repliesCount, comment.replies.size)
     val previewReplies = comment.replies.take(2)
     val hasReplies = displayReplyCount > 0
+    val containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.68f)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.68f),
-            focusedContainerColor = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.92f),
-            pressedContainerColor = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.92f),
+            containerColor = containerColor,
+            focusedContainerColor = containerColor,
+            pressedContainerColor = containerColor,
             contentColor = Color.White,
             focusedContentColor = Color.White,
             pressedContentColor = Color.White
